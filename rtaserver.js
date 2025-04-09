@@ -1,3 +1,6 @@
+
+const axios = require('axios');
+
 require("./settings");
 const {
   default: WADefault,
@@ -381,78 +384,86 @@ const updateQR = (data) => {
 };
 
 app.all("/send-message", async (req, res) => {
-  //console.log(req);
   const pesankirim = req.body.message || req.query.message;
   const number = req.body.number || req.query.number;
   let numberWA;
   try {
-    if (!req.files) {
-      if (!number) {
-        res.status(500).json({
-          status: false,
-          response: "Nomor WA belum tidak disertakan!",
-        });
-      } else {
-        if (number.startsWith("0")) {
-          numberWA =
-            global.countrycodephone + number.substring(1) + "@s.whatsapp.net";
-        } else {
-          numberWA = number + "@s.whatsapp.net";
-        }
-
-        console.log(await rtaserver.onWhatsApp(numberWA));
-        if (isConnected) {
-          const exists = await rtaserver.onWhatsApp(numberWA);
-          if (exists?.jid || (exists && exists[0]?.jid)) {
-            var usepp = {};
-            if (global.use_pp == true) {
-              usepp = {
-                image: pp_bot,
-                caption: pesankirim,
-              };
-            } else {
-              usepp = {
-                text: pesankirim,
-              };
-            }
-
-            rtaserver
-              .sendMessage(exists.jid || exists[0].jid, usepp)
-              .then((result) => {
-                res.status(200).json({
-                  status: true,
-                  response: result,
-                });
-
-                if (global.kirimkontak_admin == true) {
-                  rtaserver.sendContact(
-                    exists.jid || exists[0].jid,
-                    global.kontakadmin
-                  );
-                }
-              })
-              .catch((err) => {
-                res.status(500).json({
-                  status: false,
-                  response: err,
-                });
-              });
-          } else {
-            res.status(500).json({
-              status: false,
-              response: `Nomor ${number} tidak terdaftar.`,
-            });
-          }
-        } else {
-          res.status(500).json({
-            status: false,
-            response: `WhatsApp belum terhubung.`,
-          });
-        }
-      }
+    if (!number) {
+      res.status(500).json({
+        status: false,
+        response: "Nomor WA belum tidak disertakan!",
+      });
+      return;
     }
+
+    if (number.startsWith("0")) {
+      numberWA = global.countrycodephone + number.substring(1) + "@s.whatsapp.net";
+    } else {
+      numberWA = number + "@s.whatsapp.net";
+    }
+
+    if (!isConnected) {
+      res.status(500).json({
+        status: false,
+        response: `WhatsApp belum terhubung.`,
+      });
+      return;
+    }
+
+    const exists = await rtaserver.onWhatsApp(numberWA);
+    if (!exists?.jid && !(exists && exists[0]?.jid)) {
+      res.status(500).json({
+        status: false,
+        response: `Nomor ${number} tidak terdaftar.`,
+      });
+      return;
+    }
+
+    let usepp = {};
+    if (req.files && req.files.image) {
+      const imageFile = req.files.image;
+      usepp = {
+        image: imageFile.data,
+        caption: pesankirim || '',
+      };
+    } else if (req.query.image || req.body.image) {
+      const imageUrl = req.query.image || req.body.image;
+      try {
+        const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+        usepp = {
+          image: Buffer.from(response.data),
+          caption: pesankirim || '',
+        };
+      } catch (error) {
+        console.error('Error downloading image:', error);
+        usepp = { text: pesankirim };
+      }
+    } else if (global.use_pp) {
+      usepp = {
+        image: pp_bot,
+        caption: pesankirim,
+      };
+    } else {
+      usepp = {
+        text: pesankirim,
+      };
+    }
+
+    const result = await rtaserver.sendMessage(exists.jid || exists[0].jid, usepp);
+    res.status(200).json({
+      status: true,
+      response: result,
+    });
+
+    if (global.kirimkontak_admin) {
+      await rtaserver.sendContact(exists.jid || exists[0].jid, global.kontakadmin);
+    }
+
   } catch (err) {
-    res.status(500).send(err);
+    res.status(500).json({
+      status: false,
+      response: err.message || err,
+    });
   }
 });
 
