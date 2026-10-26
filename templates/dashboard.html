@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WhatsApp Gateway Control</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">W</span><div><p class="eyebrow">OPERATIONS CONSOLE</p><h1>WhatsApp Gateway</h1></div></div>
+      <div class="live-pill"><span></span> Live monitor</div>
+    </header>
+
+    <section class="hero">
+      <div><p class="eyebrow accent">PYTHON CONTROL PLANE</p><h2>Keep your gateway awake.</h2><p class="muted">A lightweight control room for the bot process and Render health checks.</p></div>
+      <div class="hero-meta"><span class="status-dot"></span><span id="hero-status">Checking status</span></div>
+    </section>
+
+    <section class="metrics" aria-label="Gateway metrics">
+      <article class="card metric-card"><div class="card-label">Gateway process</div><div class="metric-value" id="process-status">—</div><div class="metric-note">Node runtime supervised by Python</div></article>
+      <article class="card metric-card"><div class="card-label">Last response</div><div class="metric-value" id="response-status">—</div><div class="metric-note" id="response-note">No checks yet</div></article>
+      <article class="card metric-card"><div class="card-label">Latency</div><div class="metric-value" id="latency">—</div><div class="metric-note">Measured on the latest request</div></article>
+    </section>
+
+    <section class="content-grid">
+      <article class="card activity-card"><div class="section-heading"><div><p class="eyebrow">ACTIVITY</p><h3>Health check timeline</h3></div><span class="counter" id="checks">0 checks</span></div><div class="timeline"><div class="timeline-line"></div><div class="timeline-item"><span class="timeline-icon">↗</span><div><strong>Keep-alive monitor started</strong><p>Requests are sent every {{ interval // 60 }} minutes.</p><time id="last-check">Waiting for first check</time></div></div><div class="timeline-item muted-item"><span class="timeline-icon">•</span><div><strong>Target endpoint</strong><p class="mono">{{ target_url }}</p></div></div></div></article>
+      <aside class="card config-card"><p class="eyebrow">CONFIGURATION</p><h3>Runtime settings</h3><dl><div><dt>Interval</dt><dd>{{ interval // 60 }} min</dd></div><div><dt>Port</dt><dd>{{ request.environ.get('SERVER_PORT', '5000') }}</dd></div><div><dt>Health target</dt><dd class="configured">Configured</dd></div></dl><button id="refresh" type="button">Refresh now <span>↗</span></button></aside>
+    </section>
+    <footer><span>Python Flask control plane</span><span>Protected local operations surface</span></footer>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const formatTime = (value) => value ? new Date(value).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'}) : 'Waiting for first check';
+    async function loadStatus() {
+      const data = await fetch('/api/status').then((r) => r.json());
+      const running = data.gateway_running;
+      $('process-status').textContent = running ? 'Running' : 'Stopped';
+      $('process-status').className = `metric-value ${running ? 'positive' : 'negative'}`;
+      $('response-status').textContent = data.last_status ? `${data.last_status} OK` : 'Pending';
+      $('response-status').className = `metric-value ${data.last_status === 200 ? 'positive' : ''}`;
+      $('response-note').textContent = data.last_error || `${data.checks} total checks`;
+      $('latency').textContent = data.last_latency_ms ? `${data.last_latency_ms} ms` : '—';
+      $('checks').textContent = `${data.checks} check${data.checks === 1 ? '' : 's'}`;
+      $('last-check').textContent = data.last_check ? `Last checked at ${formatTime(data.last_check)}` : 'Waiting for first check';
+      $('hero-status').textContent = data.last_status === 200 ? 'Gateway healthy' : 'Monitoring gateway';
+    }
+    $('refresh').addEventListener('click', async () => { $('refresh').disabled = true; await fetch('/api/check').catch(() => {}); await loadStatus(); $('refresh').disabled = false; });
+    loadStatus(); setInterval(loadStatus, 10000);
+  </script>
+</body>
+</html>
